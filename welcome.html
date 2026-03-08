@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Bookmark Sorter — Installed!</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background: #f5f7fa;
+        color: #1a1a2e;
+        display: flex;
+        justify-content: center;
+        padding: 48px 16px;
+      }
+      .container {
+        max-width: 560px;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        padding: 40px 36px;
+        text-align: center;
+      }
+      .icon { width: 64px; height: 64px; margin-bottom: 16px; }
+      h1 { font-size: 22px; margin-bottom: 8px; }
+      .subtitle { color: #555; font-size: 15px; margin-bottom: 28px; }
+      .step-section { text-align: left; margin-bottom: 24px; }
+      .step-section h2 { font-size: 16px; margin-bottom: 12px; color: #1a1a2e; }
+      .pin-instructions {
+        background: #eef4ff;
+        border: 1px solid #c8daf5;
+        border-radius: 8px;
+        padding: 16px 20px;
+        text-align: left;
+        margin-bottom: 24px;
+      }
+      .pin-instructions ol {
+        margin: 0;
+        padding-left: 20px;
+        line-height: 1.8;
+        font-size: 14px;
+      }
+      .pin-instructions li { margin-bottom: 4px; }
+      .pin-instructions strong { color: #1a56db; }
+      .puzzle-icon {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        vertical-align: middle;
+        margin: 0 2px;
+      }
+      .setup-section {
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 16px 20px;
+        text-align: left;
+        margin-bottom: 24px;
+      }
+      .setup-section h2 { font-size: 15px; margin-bottom: 10px; }
+      .setup-section ol {
+        margin: 0;
+        padding-left: 20px;
+        line-height: 1.8;
+        font-size: 13px;
+        color: #444;
+      }
+      .setup-section code {
+        background: #e8ecf1;
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-size: 12px;
+      }
+      .footer { color: #888; font-size: 13px; margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <img src="icons/icon128.png" class="icon" alt="AI Bookmark Sorter" />
+      <h1>AI Bookmark Sorter Installed!</h1>
+      <p class="subtitle">Pin the extension to your toolbar for quick access.</p>
+
+      <div class="pin-instructions">
+        <ol>
+          <li>Click the <strong>puzzle piece icon</strong> <svg class="puzzle-icon" viewBox="0 0 24 24" fill="none" stroke="#1a56db" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v5a3 3 0 1 1 0 6v5a2 2 0 0 0 2 2h5a3 3 0 1 1 6 0h5a2 2 0 0 0 2-2v-5a3 3 0 1 1 0-6V4a2 2 0 0 0-2-2h-3.5"/></svg> in the Chrome toolbar (top-right)</li>
+          <li>Find <strong>AI Bookmark Sorter</strong> in the list</li>
+          <li>Click the <strong>pin icon</strong> next to it</li>
+          <li>The extension icon will now always be visible in your toolbar</li>
+        </ol>
+      </div>
+
+      <div class="setup-section">
+        <h2>First-time setup (if not already done)</h2>
+        <ol>
+          <li>Open <code>chrome://flags/#optimization-guide-on-device-model</code> &rarr; <strong>Enabled</strong></li>
+          <li>Open <code>chrome://flags/#prompt-api-for-gemini-nano</code> &rarr; <strong>Enabled</strong></li>
+          <li>Click <strong>Relaunch</strong> to restart Chrome</li>
+          <li>Open <code>chrome://components</code>, find <strong>Optimization Guide On Device Model</strong>, click <strong>Check for update</strong></li>
+          <li>Wait for the model to download (~22 GB). Check status in <code>chrome://on-device-internals</code></li>
+        </ol>
+      </div>
+
+      <p class="footer">You can close this tab. Click the extension icon to start sorting!</p>
+    </div>
+  </body>
+</html>

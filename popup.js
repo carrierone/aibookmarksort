@@ -335,6 +335,9 @@ async function applySelectedChanges() {
     updateProgress(i + 1, cards.length);
   }
 
+  // Clear saved state — the bookmarks have been moved, results are stale.
+  await sendMessage({ type: "clearSavedState" });
+
   nodes.completeSummary.textContent =
     failed > 0
       ? "Moved " + moved + " bookmark(s). " + failed + " failed."
@@ -426,7 +429,7 @@ async function triggerModelDownload() {
 // Load & scan flows
 // ---------------------------------------------------------------------------
 
-async function loadInitialData() {
+async function loadInitialData(skipResume) {
   appState.bookmarks = [];
   appState.folders = [];
   appState.results = [];
@@ -439,6 +442,20 @@ async function loadInitialData() {
   setModelStatus("unknown");
 
   try {
+    // Check for saved classification results (resume after popup close/reopen).
+    if (!skipResume) {
+      const saved = await sendMessage({ type: "getSavedState" });
+      if (saved?.success && saved.hasState) {
+        appState.results = saved.results;
+        appState.bookmarks = saved.bookmarks;
+        appState.folders = saved.folders;
+        appState.mode = saved.mode || "unsorted";
+        renderResults(appState.results);
+        setView("state-results");
+        return;
+      }
+    }
+
     const ai = await sendMessage({ type: "checkAIAvailability" });
     if (!ai?.success) {
       setModelStatus("unavailable");
@@ -492,10 +509,14 @@ async function startScanUnsorted() {
   updateProgress(0, appState.bookmarks.length);
 
   try {
+    // Clear any previously saved state before starting a new scan.
+    await sendMessage({ type: "clearSavedState" });
+
     const resp = await sendMessage({
       type: "classifyBookmarks",
       bookmarks: appState.bookmarks,
-      folders: appState.folders
+      folders: appState.folders,
+      mode: "unsorted"
     });
     if (!resp?.success) throw new Error(resp?.error || "Classification failed.");
 
@@ -545,10 +566,14 @@ async function startResortFolders() {
     nodes.progressBarContainer.classList.remove("hidden");
     updateProgress(0, bookmarks.length);
 
+    // Clear any previously saved state before starting a new scan.
+    await sendMessage({ type: "clearSavedState" });
+
     const resp = await sendMessage({
       type: "classifyBookmarks",
       bookmarks,
-      folders
+      folders,
+      mode: "folders"
     });
     if (!resp?.success) throw new Error(resp?.error || "Classification failed.");
 
@@ -585,9 +610,15 @@ function bindEvents() {
     await applySelectedChanges();
   });
   nodes.btnApplySelected.addEventListener("click", applySelectedChanges);
-  nodes.btnCancel.addEventListener("click", loadInitialData);
-  nodes.btnDone.addEventListener("click", loadInitialData);
-  nodes.btnRetry.addEventListener("click", loadInitialData);
+  nodes.btnCancel.addEventListener("click", async () => {
+    await sendMessage({ type: "clearSavedState" });
+    loadInitialData(true);
+  });
+  nodes.btnDone.addEventListener("click", async () => {
+    await sendMessage({ type: "clearSavedState" });
+    loadInitialData(true);
+  });
+  nodes.btnRetry.addEventListener("click", () => loadInitialData(true));
 
   // Live progress updates from the background service worker.
   chrome.runtime.onMessage.addListener((message) => {

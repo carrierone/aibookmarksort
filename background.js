@@ -175,10 +175,7 @@ async function handleCheckAIAvailability() {
   }
 
   try {
-    const status = await LanguageModel.availability({
-      expectedInputs: [{ type: "text", languages: ["en"] }],
-      expectedOutputs: [{ type: "text", languages: ["en"] }]
-    });
+    const status = await LanguageModel.availability();
     return {
       success: true,
       status: ["available", "downloadable", "downloading", "unavailable"].includes(status)
@@ -207,8 +204,6 @@ async function handleTriggerModelDownload() {
   try {
     session = await LanguageModel.create({
       initialPrompts: [{ role: "system", content: "You are a helpful assistant." }],
-      expectedInputs: [{ type: "text", languages: ["en"] }],
-      expectedOutputs: [{ type: "text", languages: ["en"] }],
       monitor(monitor) {
         if (!monitor || typeof monitor.addEventListener !== "function") return;
         monitor.addEventListener("downloadprogress", (event) => {
@@ -467,8 +462,6 @@ async function handleClassifyBookmarks(payload) {
   try {
     session = await LanguageModel.create({
       initialPrompts: [{ role: "system", content: getSystemPrompt() }],
-      expectedInputs: [{ type: "text", languages: ["en"] }],
-      expectedOutputs: [{ type: "text", languages: ["en"] }],
       monitor(monitor) {
         if (!monitor || typeof monitor.addEventListener !== "function") return;
         monitor.addEventListener("downloadprogress", (event) => {
@@ -497,6 +490,9 @@ async function handleClassifyBookmarks(payload) {
       results.push(result);
       sendProgress("classifyProgress", { current: i + 1, total: bookmarks.length, result });
     }
+
+    // Persist results so the popup can resume if closed and reopened.
+    await saveClassificationState(results, bookmarks, folders, payload?.mode || "unsorted");
 
     return { success: true, results };
   } catch (error) {
@@ -548,6 +544,71 @@ async function handleCreateFolderAndMove(payload) {
 }
 
 // ---------------------------------------------------------------------------
+// State persistence — save/clear classification results for popup resumption
+// ---------------------------------------------------------------------------
+
+async function saveClassificationState(results, bookmarks, folders, mode) {
+  try {
+    await chrome.storage.local.set({
+      savedResults: results,
+      savedBookmarks: bookmarks,
+      savedFolders: folders,
+      savedMode: mode,
+      savedAt: Date.now()
+    });
+  } catch (error) {
+    console.warn("Failed to save classification state:", error);
+  }
+}
+
+async function clearClassificationState() {
+  try {
+    await chrome.storage.local.remove([
+      "savedResults", "savedBookmarks", "savedFolders", "savedMode", "savedAt"
+    ]);
+  } catch (error) {
+    console.warn("Failed to clear classification state:", error);
+  }
+}
+
+async function handleGetSavedState() {
+  try {
+    const data = await chrome.storage.local.get([
+      "savedResults", "savedBookmarks", "savedFolders", "savedMode", "savedAt"
+    ]);
+    if (Array.isArray(data.savedResults) && data.savedResults.length) {
+      return {
+        success: true,
+        hasState: true,
+        results: data.savedResults,
+        bookmarks: data.savedBookmarks || [],
+        folders: data.savedFolders || [],
+        mode: data.savedMode || "unsorted",
+        savedAt: data.savedAt || 0
+      };
+    }
+    return { success: true, hasState: false };
+  } catch (error) {
+    console.warn("Failed to load saved state:", error);
+    return { success: true, hasState: false };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Install event — prompt user to pin the extension
+// ---------------------------------------------------------------------------
+
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === "install") {
+    // Open a welcome tab that guides the user to pin the extension.
+    chrome.tabs.create({
+      url: "welcome.html",
+      active: true
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Message router
 // ---------------------------------------------------------------------------
 
@@ -575,6 +636,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           break;
         case "createFolderAndMove":
           sendResponseSafe(sendResponse, await handleCreateFolderAndMove(message));
+          break;
+        case "getSavedState":
+          sendResponseSafe(sendResponse, await handleGetSavedState());
+          break;
+        case "clearSavedState":
+          await clearClassificationState();
+          sendResponseSafe(sendResponse, { success: true });
           break;
         default:
           sendResponseSafe(sendResponse, { success: false, error: "Unknown message type." });
