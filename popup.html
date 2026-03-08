@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Bookmark Sorter</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- State: initial -->
+      <div id="state-initial">
+        <div class="header">
+          <img src="icons/icon48.png" class="header-icon" alt="AI Bookmark Sorter icon" />
+          <h1>AI Bookmark Sorter</h1>
+        </div>
+        <div id="bookmark-count" class="subtitle"></div>
+        <button id="btn-scan" class="btn-primary">Sort Unsorted Bookmarks</button>
+        <button id="btn-show-folders" class="btn-secondary btn-full">Re-sort a Folder</button>
+        <div id="ai-status" class="status-bar"></div>
+      </div>
+
+      <!-- State: folder picker -->
+      <div id="state-folders" class="hidden">
+        <div class="results-header">
+          <h2>Select Folders</h2>
+          <span id="folder-picker-count" class="muted-text"></span>
+        </div>
+        <p class="subtitle">Check folders whose bookmarks you want to re-categorize.</p>
+        <div id="folder-picker-list"></div>
+        <div class="actions-bar actions-bar-2">
+          <button id="btn-resort-selected" class="btn-primary">Re-sort Selected</button>
+          <button id="btn-folders-back" class="btn-ghost">Back</button>
+        </div>
+      </div>
+
+      <!-- State: loading -->
+      <div id="state-loading" class="hidden">
+        <div class="spinner"></div>
+        <div id="loading-message">Scanning bookmarks...</div>
+        <div id="progress-bar-container" class="hidden">
+          <div id="progress-bar"></div>
+          <div id="progress-text"></div>
+        </div>
+      </div>
+
+      <!-- State: results -->
+      <div id="state-results" class="hidden">
+        <div class="results-header">
+          <h2>Suggested Moves</h2>
+          <span id="results-count"></span>
+        </div>
+        <div id="results-list"></div>
+        <div class="actions-bar actions-bar-3">
+          <button id="btn-apply-all" class="btn-primary">Apply All</button>
+          <button id="btn-apply-selected" class="btn-secondary">Apply Selected</button>
+          <button id="btn-cancel" class="btn-ghost">Cancel</button>
+        </div>
+      </div>
+
+      <!-- State: complete -->
+      <div id="state-complete" class="hidden">
+        <div class="complete-icon">&#10003;</div>
+        <h2>Done!</h2>
+        <div id="complete-summary"></div>
+        <button id="btn-done" class="btn-primary">Sort More</button>
+      </div>
+
+      <!-- State: error -->
+      <div id="state-error" class="hidden">
+        <div class="error-icon">&#9888;</div>
+        <h2>Setup Required</h2>
+        <div id="error-message"></div>
+        <div class="setup-steps">
+          <p><strong>Prerequisites:</strong> Chrome 138+ on Windows/macOS/Linux, 22GB+ free disk space, and either GPU &gt;4GB VRAM or 16GB RAM with 4+ CPU cores.</p>
+          <p>To use this extension:</p>
+          <ol>
+            <li>Open <code>chrome://flags/#optimization-guide-on-device-model</code> and set to <strong>Enabled</strong></li>
+            <li>Open <code>chrome://flags/#prompt-api-for-gemini-nano-multimodal-input</code> and set to <strong>Enabled</strong></li>
+            <li>Restart Chrome</li>
+            <li>Wait for Gemini Nano to download (~22GB)</li>
+          </ol>
+        </div>
+        <button id="btn-retry" class="btn-primary">Retry</button>
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
