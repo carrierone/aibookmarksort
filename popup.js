@@ -48,11 +48,6 @@ function sendMessage(message) {
   });
 }
 
-function updateStatus(text, type) {
-  nodes.aiStatus.classList.remove("status-ok", "status-warn", "status-error");
-  if (type) nodes.aiStatus.classList.add(type);
-  nodes.aiStatus.textContent = text;
-}
 
 function truncateUrl(url) {
   if (!url) return "";
@@ -348,6 +343,86 @@ async function applySelectedChanges() {
 }
 
 // ---------------------------------------------------------------------------
+// Model status panel
+// ---------------------------------------------------------------------------
+
+function setModelStatus(status) {
+  const badge = nodes.modelStatusBadge;
+  const detail = nodes.modelStatusDetail;
+  const downloadBtn = nodes.btnDownloadModel;
+  const downloadBar = nodes.modelDownloadBar;
+
+  // Reset
+  badge.className = "model-badge";
+  downloadBtn.classList.add("hidden");
+  downloadBar.classList.add("hidden");
+
+  switch (status) {
+    case "available":
+      badge.classList.add("model-badge-available");
+      badge.textContent = "Ready";
+      detail.textContent = "Gemini Nano is installed and ready to use.";
+      break;
+    case "downloadable":
+      badge.classList.add("model-badge-downloadable");
+      badge.textContent = "Not Downloaded";
+      detail.textContent = "The model needs to be downloaded (~22 GB). Click below to start.";
+      downloadBtn.classList.remove("hidden");
+      break;
+    case "downloading":
+      badge.classList.add("model-badge-downloading");
+      badge.textContent = "Downloading...";
+      detail.textContent = "The model is being downloaded. This may take a while.";
+      downloadBar.classList.remove("hidden");
+      break;
+    case "unavailable":
+      badge.classList.add("model-badge-unavailable");
+      badge.textContent = "Unavailable";
+      detail.textContent = "Enable the required Chrome flags and restart Chrome. See Setup Required below.";
+      break;
+    default:
+      badge.classList.add("model-badge-unknown");
+      badge.textContent = "Checking...";
+      detail.textContent = "";
+      break;
+  }
+}
+
+function updateModelDownloadProgress(fraction) {
+  const pct = Math.max(0, Math.min(100, Math.round(fraction * 100)));
+  nodes.modelDownloadFill.style.width = pct + "%";
+  nodes.modelDownloadBar.classList.remove("hidden");
+  nodes.modelStatusDetail.textContent = "Downloading model: " + pct + "%";
+  nodes.modelStatusBadge.textContent = pct + "%";
+}
+
+async function triggerModelDownload() {
+  nodes.btnDownloadModel.disabled = true;
+  nodes.btnDownloadModel.textContent = "Downloading...";
+  setModelStatus("downloading");
+
+  try {
+    const resp = await sendMessage({ type: "triggerModelDownload" });
+    if (resp?.success) {
+      setModelStatus("available");
+      // Re-run init to enable scan buttons now that the model is ready.
+      await loadInitialData();
+    } else {
+      nodes.modelStatusDetail.textContent = resp?.error || "Download failed. Check flags and try again.";
+      nodes.btnDownloadModel.disabled = false;
+      nodes.btnDownloadModel.textContent = "Retry Download";
+      nodes.btnDownloadModel.classList.remove("hidden");
+    }
+  } catch (error) {
+    console.error("Model download error:", error);
+    nodes.modelStatusDetail.textContent = "Download failed: " + error.message;
+    nodes.btnDownloadModel.disabled = false;
+    nodes.btnDownloadModel.textContent = "Retry Download";
+    nodes.btnDownloadModel.classList.remove("hidden");
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Load & scan flows
 // ---------------------------------------------------------------------------
 
@@ -361,22 +436,27 @@ async function loadInitialData() {
   nodes.btnScan.disabled = true;
   nodes.btnShowFolders.disabled = true;
   resetProgress();
+  setModelStatus("unknown");
 
   try {
     const ai = await sendMessage({ type: "checkAIAvailability" });
     if (!ai?.success) {
+      setModelStatus("unavailable");
       throw new Error(
         ai?.error || "Chrome Built-in AI not available. Please use Chrome 138+ with the required flags enabled."
       );
     }
 
-    if (ai.status === "readily") {
-      updateStatus("AI is ready.", "status-ok");
-    } else if (ai.status === "after-download") {
-      updateStatus("AI model needs downloading. It will download when you scan.", "status-warn");
-    } else {
+    // Update model status panel.
+    setModelStatus(ai.status);
+
+    if (ai.status === "unavailable") {
       throw new Error("AI is unavailable. Enable required flags and wait for model download to complete.");
     }
+
+    // Allow scan even when downloadable/downloading — LanguageModel.create() will
+    // trigger or wait for the download automatically.
+    const canScan = ai.status === "available" || ai.status === "downloadable" || ai.status === "downloading";
 
     const data = await sendMessage({ type: "getUnsortedBookmarks" });
     if (!data?.success) throw new Error(data?.error || "Unable to read bookmarks.");
@@ -389,11 +469,11 @@ async function loadInitialData() {
       nodes.btnScan.disabled = true;
     } else {
       nodes.bookmarkCount.textContent = "Found " + appState.bookmarks.length + " unsorted bookmark(s).";
-      nodes.btnScan.disabled = false;
+      nodes.btnScan.disabled = !canScan;
     }
 
-    // Always allow folder re-sort if there are folders.
-    nodes.btnShowFolders.disabled = !appState.folders.length;
+    // Always allow folder re-sort if there are folders and model is usable.
+    nodes.btnShowFolders.disabled = !appState.folders.length || !canScan;
   } catch (error) {
     console.error("Initialization error:", error);
     nodes.errorMessage.textContent = error.message;
@@ -494,6 +574,7 @@ function showFolderPicker() {
 function bindEvents() {
   nodes.btnScan.addEventListener("click", startScanUnsorted);
   nodes.btnShowFolders.addEventListener("click", showFolderPicker);
+  nodes.btnDownloadModel.addEventListener("click", triggerModelDownload);
   nodes.btnResortSelected.addEventListener("click", startResortFolders);
   nodes.btnFoldersBack.addEventListener("click", loadInitialData);
 
@@ -518,9 +599,14 @@ function bindEvents() {
     }
 
     if (message.type === "modelDownloadProgress") {
+      const val = typeof message.progress === "number" ? message.progress : 0;
+
+      // Update model status panel (visible on initial screen).
+      updateModelDownloadProgress(val);
+
+      // Also update loading screen progress bar (visible during scan).
       nodes.loadingMessage.textContent = "Downloading AI model...";
       nodes.progressBarContainer.classList.remove("hidden");
-      const val = typeof message.progress === "number" ? message.progress : 0;
       const pct = Math.max(0, Math.min(100, Math.round(val * 100)));
       nodes.progressBar.style.width = pct + "%";
       nodes.progressText.textContent = "Model download: " + pct + "%";
@@ -534,7 +620,6 @@ function bindEvents() {
 
 document.addEventListener("DOMContentLoaded", async () => {
   nodes.bookmarkCount = q("bookmark-count");
-  nodes.aiStatus = q("ai-status");
   nodes.loadingMessage = q("loading-message");
   nodes.progressBarContainer = q("progress-bar-container");
   nodes.progressBar = q("progress-bar");
@@ -546,8 +631,16 @@ document.addEventListener("DOMContentLoaded", async () => {
   nodes.folderPickerList = q("folder-picker-list");
   nodes.folderPickerCount = q("folder-picker-count");
 
+  // Model status panel.
+  nodes.modelStatusBadge = q("model-status-badge");
+  nodes.modelStatusDetail = q("model-status-detail");
+  nodes.modelDownloadBar = q("model-download-bar");
+  nodes.modelDownloadFill = q("model-download-fill");
+
+  // Buttons.
   nodes.btnScan = q("btn-scan");
   nodes.btnShowFolders = q("btn-show-folders");
+  nodes.btnDownloadModel = q("btn-download-model");
   nodes.btnResortSelected = q("btn-resort-selected");
   nodes.btnFoldersBack = q("btn-folders-back");
   nodes.btnApplyAll = q("btn-apply-all");

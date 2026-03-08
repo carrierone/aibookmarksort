@@ -25,18 +25,30 @@ Open each of these URLs in Chrome and set them to **Enabled**, then restart Chro
 
 ```
 chrome://flags/#optimization-guide-on-device-model
+chrome://flags/#prompt-api-for-gemini-nano
+```
+
+If `#prompt-api-for-gemini-nano` does not appear, try the multimodal variant instead:
+
+```
 chrome://flags/#prompt-api-for-gemini-nano-multimodal-input
 ```
 
-### 2. Wait for Gemini Nano to download
+Set it to **Enabled** (or **Enabled multilingual** if that option is available). Then click **Relaunch**.
 
-After enabling the flags and restarting, Chrome will download the Gemini Nano model in the background (~22 GB). You can check the download status at:
+### 2. Trigger and verify the Gemini Nano model download
 
-```
-chrome://components
-```
+After enabling the flags and restarting, you need to trigger the model download:
 
-Look for **Optimization Guide On Device Model** and make sure it has a version number (not `0.0.0.0`). You can click "Check for update" to trigger the download if it hasn't started.
+1. Open `chrome://on-device-internals` and go to the **Model Status** tab. Check for any errors.
+2. Open `chrome://components`, find **Optimization Guide On Device Model**, and click **Check for update** to trigger the download if it hasn't started. Wait until it shows a version number (not `0.0.0.0`).
+3. Open DevTools (F12) on any page, go to the **Console** tab, and run:
+   ```js
+   await LanguageModel.availability();
+   ```
+   This should return `"available"`. If it returns `"downloadable"` or `"downloading"`, the model is still being fetched. If it returns `"unavailable"`, double-check the flags and hardware requirements above.
+
+The model download is ~22 GB and may take a while depending on your connection.
 
 ### 3. Install the extension
 
@@ -116,10 +128,17 @@ aibookmarksort/
 
 ## Troubleshooting
 
-**"Setup Required" error when opening the extension**
-- Make sure both Chrome flags are enabled (see Setup step 1)
-- Make sure you're on Chrome 138 or newer (`chrome://version`)
-- Check that the Gemini Nano model has finished downloading at `chrome://components`
+**Model shows "Unavailable" in the extension**
+1. Make sure you're on Chrome 138 or newer — check at `chrome://version`
+2. Enable both Chrome flags (see Setup step 1) and **Relaunch**
+3. Go to `chrome://components`, find **Optimization Guide On Device Model**, and click **Check for update**
+4. Go to `chrome://on-device-internals` and check the **Model Status** tab for errors
+5. Open DevTools Console on any page and run `await LanguageModel.availability();` — it should return `"available"`
+6. If it returns `"downloadable"`, click the **Download Model** button in the extension to start the download
+
+**Model shows "Not Downloaded"**
+- Click the **Download Model** button in the extension. The model is ~22 GB and may take a while.
+- Alternatively, go to `chrome://components`, find the model entry, and click **Check for update**.
 
 **Classification is slow**
 - Each bookmark requires an AI prompt (and a second prompt + page fetch if the first pass is ambiguous). With many bookmarks this takes time. The progress bar shows real-time status.

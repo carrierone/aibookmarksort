@@ -175,10 +175,15 @@ async function handleCheckAIAvailability() {
   }
 
   try {
-    const status = await LanguageModel.availability();
+    const status = await LanguageModel.availability({
+      expectedInputs: [{ type: "text", languages: ["en"] }],
+      expectedOutputs: [{ type: "text", languages: ["en"] }]
+    });
     return {
       success: true,
-      status: ["readily", "after-download", "no"].includes(status) ? status : "no"
+      status: ["available", "downloadable", "downloading", "unavailable"].includes(status)
+        ? status
+        : "unavailable"
     };
   } catch (error) {
     console.error("Failed to check AI availability:", error);
@@ -186,6 +191,40 @@ async function handleCheckAIAvailability() {
       success: false,
       error: "Chrome Built-in AI not available. Please use Chrome 138+ with the required flags enabled."
     };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Model download trigger
+// ---------------------------------------------------------------------------
+
+async function handleTriggerModelDownload() {
+  if (typeof LanguageModel === "undefined") {
+    return { success: false, error: "Chrome Built-in AI not available." };
+  }
+
+  let session;
+  try {
+    session = await LanguageModel.create({
+      initialPrompts: [{ role: "system", content: "You are a helpful assistant." }],
+      expectedInputs: [{ type: "text", languages: ["en"] }],
+      expectedOutputs: [{ type: "text", languages: ["en"] }],
+      monitor(monitor) {
+        if (!monitor || typeof monitor.addEventListener !== "function") return;
+        monitor.addEventListener("downloadprogress", (event) => {
+          const progress = event?.total > 0 ? event.loaded / event.total : 0;
+          sendProgress("modelDownloadProgress", { progress });
+        });
+      }
+    });
+    return { success: true };
+  } catch (error) {
+    console.error("Model download/create failed:", error);
+    return { success: false, error: error?.message || "Failed to download model." };
+  } finally {
+    if (session && typeof session.destroy === "function") {
+      try { session.destroy(); } catch (_) { /* ignore */ }
+    }
   }
 }
 
@@ -427,7 +466,9 @@ async function handleClassifyBookmarks(payload) {
 
   try {
     session = await LanguageModel.create({
-      systemPrompt: getSystemPrompt(),
+      initialPrompts: [{ role: "system", content: getSystemPrompt() }],
+      expectedInputs: [{ type: "text", languages: ["en"] }],
+      expectedOutputs: [{ type: "text", languages: ["en"] }],
       monitor(monitor) {
         if (!monitor || typeof monitor.addEventListener !== "function") return;
         monitor.addEventListener("downloadprogress", (event) => {
@@ -525,6 +566,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           break;
         case "classifyBookmarks":
           sendResponseSafe(sendResponse, await handleClassifyBookmarks(message));
+          break;
+        case "triggerModelDownload":
+          sendResponseSafe(sendResponse, await handleTriggerModelDownload());
           break;
         case "moveBookmark":
           sendResponseSafe(sendResponse, await handleMoveBookmark(message));

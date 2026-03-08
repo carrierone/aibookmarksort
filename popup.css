@@ -70,6 +70,96 @@ body {
   font-size: 13px;
 }
 
+/* ---- Model status panel ---- */
+
+.model-status-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.model-status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.model-status-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.model-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+
+.model-badge-available {
+  background: #d5f2df;
+  color: #0f6f2b;
+}
+
+.model-badge-downloadable {
+  background: #e8f0fe;
+  color: var(--primary);
+}
+
+.model-badge-downloading {
+  background: #ffe7c2;
+  color: #9d5a00;
+}
+
+.model-badge-unavailable {
+  background: #ffd9d5;
+  color: #9f2a1e;
+}
+
+.model-badge-unknown {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.model-status-detail {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+.model-status-detail:empty {
+  display: none;
+}
+
+.model-download-bar {
+  margin-top: 8px;
+  height: 6px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.model-download-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #1a73e8, #4f9dff);
+  border-radius: 6px;
+  transition: width 300ms ease;
+}
+
+.btn-small {
+  margin-top: 8px;
+  font-size: 12px;
+  padding: 6px 12px;
+  width: 100%;
+}
+
 /* ---- Status bar ---- */
 
 .status-bar {
