@@ -40,7 +40,18 @@ Look for **Optimization Guide On Device Model** and make sure it has a version n
 
 ### 3. Install the extension
 
-1. Clone or download this repository:
+**Option A: Download the release (easiest)**
+
+1. Download `aibookmarksort-v1.0.zip` from the [latest release](https://github.com/carrierone/aibookmarksort/releases/latest)
+2. Extract the zip file
+3. Open `chrome://extensions` in Chrome
+4. Enable **Developer mode** (toggle in the top right)
+5. Click **Load unpacked**
+6. Select the extracted `aibookmarksort` folder
+
+**Option B: Clone the repository**
+
+1. Clone the repo:
    ```bash
    git clone https://github.com/carrierone/aibookmarksort.git
    ```
