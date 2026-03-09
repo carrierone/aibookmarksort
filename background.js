@@ -6,6 +6,21 @@ const FETCH_TIMEOUT_MS = 5000;
 const MAX_PAGE_TEXT_LENGTH = 1500;
 
 // ---------------------------------------------------------------------------
+// Live classification state (in-memory, survives popup close/reopen)
+// ---------------------------------------------------------------------------
+
+const classifyJob = {
+  active: false,
+  cancelled: false,
+  current: 0,
+  total: 0,
+  results: [],
+  bookmarks: [],
+  folders: [],
+  mode: "unsorted"
+};
+
+// ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
 
@@ -456,7 +471,16 @@ async function handleClassifyBookmarks(payload) {
   const folderPaths = dedupedFolders.map((f) => f.path);
   const foldersByPath = new Map(dedupedFolders.map((f) => [f.path, f]));
 
-  const results = [];
+  // Initialize live job state.
+  classifyJob.active = true;
+  classifyJob.cancelled = false;
+  classifyJob.current = 0;
+  classifyJob.total = bookmarks.length;
+  classifyJob.results = [];
+  classifyJob.bookmarks = bookmarks;
+  classifyJob.folders = folders;
+  classifyJob.mode = payload?.mode || "unsorted";
+
   let session;
 
   try {
@@ -472,6 +496,11 @@ async function handleClassifyBookmarks(payload) {
     });
 
     for (let i = 0; i < bookmarks.length; i += 1) {
+      // Check for cancellation before each bookmark.
+      if (classifyJob.cancelled) {
+        break;
+      }
+
       const bookmark = bookmarks[i];
       let result;
       try {
@@ -487,15 +516,35 @@ async function handleClassifyBookmarks(payload) {
         };
       }
 
-      results.push(result);
+      classifyJob.results.push(result);
+      classifyJob.current = i + 1;
       sendProgress("classifyProgress", { current: i + 1, total: bookmarks.length, result });
+
+      // Save incrementally so the popup can recover if closed mid-sort.
+      await saveClassificationState(
+        classifyJob.results, bookmarks, folders, classifyJob.mode,
+        !classifyJob.cancelled && i + 1 < bookmarks.length // still in progress?
+      );
     }
 
-    // Persist results so the popup can resume if closed and reopened.
-    await saveClassificationState(results, bookmarks, folders, payload?.mode || "unsorted");
+    const wasCancelled = classifyJob.cancelled;
+    classifyJob.active = false;
 
-    return { success: true, results };
+    // Final save with inProgress = false.
+    await saveClassificationState(
+      classifyJob.results, bookmarks, folders, classifyJob.mode, false
+    );
+
+    // Notify popup that classification finished (or was stopped).
+    sendProgress("classifyComplete", {
+      cancelled: wasCancelled,
+      total: bookmarks.length,
+      classified: classifyJob.results.length
+    });
+
+    return { success: true, results: classifyJob.results, cancelled: wasCancelled };
   } catch (error) {
+    classifyJob.active = false;
     console.error("Failed to classify bookmarks:", error);
     return {
       success: false,
@@ -506,6 +555,25 @@ async function handleClassifyBookmarks(payload) {
       try { session.destroy(); } catch (_) { /* ignore */ }
     }
   }
+}
+
+function handleCancelClassification() {
+  if (classifyJob.active) {
+    classifyJob.cancelled = true;
+    return { success: true, message: "Cancellation requested." };
+  }
+  return { success: true, message: "No active classification to cancel." };
+}
+
+function handleGetClassificationStatus() {
+  return {
+    success: true,
+    active: classifyJob.active,
+    current: classifyJob.current,
+    total: classifyJob.total,
+    resultsCount: classifyJob.results.length,
+    mode: classifyJob.mode
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -547,13 +615,14 @@ async function handleCreateFolderAndMove(payload) {
 // State persistence — save/clear classification results for popup resumption
 // ---------------------------------------------------------------------------
 
-async function saveClassificationState(results, bookmarks, folders, mode) {
+async function saveClassificationState(results, bookmarks, folders, mode, inProgress) {
   try {
     await chrome.storage.local.set({
       savedResults: results,
       savedBookmarks: bookmarks,
       savedFolders: folders,
       savedMode: mode,
+      savedInProgress: !!inProgress,
       savedAt: Date.now()
     });
   } catch (error) {
@@ -564,7 +633,7 @@ async function saveClassificationState(results, bookmarks, folders, mode) {
 async function clearClassificationState() {
   try {
     await chrome.storage.local.remove([
-      "savedResults", "savedBookmarks", "savedFolders", "savedMode", "savedAt"
+      "savedResults", "savedBookmarks", "savedFolders", "savedMode", "savedInProgress", "savedAt"
     ]);
   } catch (error) {
     console.warn("Failed to clear classification state:", error);
@@ -574,7 +643,7 @@ async function clearClassificationState() {
 async function handleGetSavedState() {
   try {
     const data = await chrome.storage.local.get([
-      "savedResults", "savedBookmarks", "savedFolders", "savedMode", "savedAt"
+      "savedResults", "savedBookmarks", "savedFolders", "savedMode", "savedInProgress", "savedAt"
     ]);
     if (Array.isArray(data.savedResults) && data.savedResults.length) {
       return {
@@ -584,6 +653,7 @@ async function handleGetSavedState() {
         bookmarks: data.savedBookmarks || [],
         folders: data.savedFolders || [],
         mode: data.savedMode || "unsorted",
+        inProgress: !!data.savedInProgress,
         savedAt: data.savedAt || 0
       };
     }
@@ -643,6 +713,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         case "clearSavedState":
           await clearClassificationState();
           sendResponseSafe(sendResponse, { success: true });
+          break;
+        case "cancelClassification":
+          sendResponseSafe(sendResponse, handleCancelClassification());
+          break;
+        case "getClassificationStatus":
+          sendResponseSafe(sendResponse, handleGetClassificationStatus());
           break;
         default:
           sendResponseSafe(sendResponse, { success: false, error: "Unknown message type." });

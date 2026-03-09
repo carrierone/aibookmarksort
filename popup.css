@@ -287,6 +287,18 @@ button:active {
   color: var(--muted);
 }
 
+.btn-stop {
+  margin-top: 12px;
+  color: var(--danger);
+  border-color: var(--danger);
+  font-size: 13px;
+  padding: 6px 18px;
+}
+
+.btn-stop:hover {
+  background: rgba(197, 57, 41, 0.06);
+}
+
 /* ---- Results ---- */
 
 .results-header {

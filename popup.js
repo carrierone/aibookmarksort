@@ -281,6 +281,7 @@ async function applySelectedChanges() {
 
   setView("state-loading");
   nodes.loadingMessage.textContent = "Applying changes...";
+  nodes.btnStop.classList.add("hidden");
   nodes.progressBarContainer.classList.remove("hidden");
   updateProgress(0, cards.length);
 
@@ -429,6 +430,16 @@ async function triggerModelDownload() {
 // Load & scan flows
 // ---------------------------------------------------------------------------
 
+function showLoadingWithStop(message, current, total) {
+  setView("state-loading");
+  nodes.loadingMessage.textContent = message;
+  nodes.progressBarContainer.classList.remove("hidden");
+  nodes.btnStop.classList.remove("hidden");
+  nodes.btnStop.disabled = false;
+  nodes.btnStop.textContent = "Stop Sorting";
+  updateProgress(current, total);
+}
+
 async function loadInitialData(skipResume) {
   appState.bookmarks = [];
   appState.folders = [];
@@ -438,12 +449,26 @@ async function loadInitialData(skipResume) {
   setView("state-initial");
   nodes.btnScan.disabled = true;
   nodes.btnShowFolders.disabled = true;
+  nodes.btnStop.classList.add("hidden");
   resetProgress();
   setModelStatus("unknown");
 
   try {
-    // Check for saved classification results (resume after popup close/reopen).
     if (!skipResume) {
+      // 1. Check if classification is actively running in the background.
+      const status = await sendMessage({ type: "getClassificationStatus" });
+      if (status?.success && status.active) {
+        // Background is still sorting — show loading screen and let the
+        // message listener handle incoming progress/completion events.
+        showLoadingWithStop(
+          "Classifying bookmarks with Gemini Nano...",
+          status.current,
+          status.total
+        );
+        return;
+      }
+
+      // 2. Check for saved results (classification finished while popup was closed).
       const saved = await sendMessage({ type: "getSavedState" });
       if (saved?.success && saved.hasState) {
         appState.results = saved.results;
@@ -503,10 +528,11 @@ async function startScanUnsorted() {
   appState.mode = "unsorted";
   nodes.btnScan.disabled = true;
 
-  setView("state-loading");
-  nodes.loadingMessage.textContent = "Classifying bookmarks with Gemini Nano...";
-  nodes.progressBarContainer.classList.remove("hidden");
-  updateProgress(0, appState.bookmarks.length);
+  showLoadingWithStop(
+    "Classifying bookmarks with Gemini Nano...",
+    0,
+    appState.bookmarks.length
+  );
 
   try {
     // Clear any previously saved state before starting a new scan.
@@ -543,6 +569,7 @@ async function startResortFolders() {
 
   setView("state-loading");
   nodes.loadingMessage.textContent = "Loading bookmarks from selected folders...";
+  nodes.btnStop.classList.add("hidden");
   resetProgress();
 
   try {
@@ -562,9 +589,11 @@ async function startResortFolders() {
     appState.bookmarks = bookmarks;
     appState.folders = folders;
 
-    nodes.loadingMessage.textContent = "Classifying " + bookmarks.length + " bookmark(s) with Gemini Nano...";
-    nodes.progressBarContainer.classList.remove("hidden");
-    updateProgress(0, bookmarks.length);
+    showLoadingWithStop(
+      "Classifying " + bookmarks.length + " bookmark(s) with Gemini Nano...",
+      0,
+      bookmarks.length
+    );
 
     // Clear any previously saved state before starting a new scan.
     await sendMessage({ type: "clearSavedState" });
@@ -592,6 +621,39 @@ function showFolderPicker() {
   setView("state-folders");
 }
 
+async function stopClassification() {
+  nodes.btnStop.disabled = true;
+  nodes.btnStop.textContent = "Stopping...";
+  try {
+    await sendMessage({ type: "cancelClassification" });
+    // The classifyComplete message will arrive from the background
+    // and trigger showPartialResults via the message listener.
+  } catch (error) {
+    console.error("Failed to cancel:", error);
+  }
+}
+
+async function showPartialResults() {
+  // Load whatever results have been saved so far.
+  const saved = await sendMessage({ type: "getSavedState" });
+  if (saved?.success && saved.hasState && saved.results.length) {
+    appState.results = saved.results;
+    appState.bookmarks = saved.bookmarks;
+    appState.folders = saved.folders;
+    appState.mode = saved.mode || "unsorted";
+    renderResults(appState.results);
+    const total = saved.bookmarks.length;
+    const done = saved.results.length;
+    if (done < total) {
+      nodes.resultsCount.textContent += " (stopped at " + done + "/" + total + ")";
+    }
+    setView("state-results");
+  } else {
+    // Nothing classified yet — go back to initial screen.
+    loadInitialData(true);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Event binding
 // ---------------------------------------------------------------------------
@@ -602,6 +664,7 @@ function bindEvents() {
   nodes.btnDownloadModel.addEventListener("click", triggerModelDownload);
   nodes.btnResortSelected.addEventListener("click", startResortFolders);
   nodes.btnFoldersBack.addEventListener("click", loadInitialData);
+  nodes.btnStop.addEventListener("click", stopClassification);
 
   nodes.btnApplyAll.addEventListener("click", async () => {
     for (const cb of nodes.resultsList.querySelectorAll(".card-checkbox")) {
@@ -626,6 +689,16 @@ function bindEvents() {
 
     if (message.type === "classifyProgress") {
       updateProgress(message.current ?? 0, message.total ?? appState.bookmarks.length);
+      return;
+    }
+
+    if (message.type === "classifyComplete") {
+      // Classification finished (or was stopped) while popup is open.
+      // If the popup initiated the scan via startScanUnsorted/startResortFolders,
+      // the sendMessage response handler will show results. But if the popup
+      // was reopened mid-sort (loadInitialData showed the loading screen),
+      // we need to transition to results here.
+      showPartialResults();
       return;
     }
 
@@ -674,6 +747,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   nodes.btnDownloadModel = q("btn-download-model");
   nodes.btnResortSelected = q("btn-resort-selected");
   nodes.btnFoldersBack = q("btn-folders-back");
+  nodes.btnStop = q("btn-stop");
   nodes.btnApplyAll = q("btn-apply-all");
   nodes.btnApplySelected = q("btn-apply-selected");
   nodes.btnCancel = q("btn-cancel");
