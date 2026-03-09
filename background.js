@@ -390,14 +390,23 @@ async function fetchPageContent(url) {
 
 function getSystemPrompt() {
   return (
-    "You are a bookmark organizer assistant. Your job is to categorize bookmarks into the most specific matching folder. " +
-    "Folders are shown as paths with ' > ' separating parent and child folders (e.g. 'Tech > JavaScript > Frameworks'). " +
-    "Always prefer the MOST SPECIFIC (deepest) subfolder that fits. " +
-    "Given a bookmark's title, URL, and optionally page content, plus a list of existing folder paths, you must: " +
-    "1. Find the best matching folder path from the list (return the EXACT path string as matchedFolder) " +
-    "2. If no folder is a good match, set matchedFolder to null and suggest a concise new folder name in suggestedNewFolder " +
-    "3. Always provide brief reasoning " +
-    "Be decisive — prefer matching an existing folder over creating new ones when reasonable."
+    "You are a bookmark organizer. You classify bookmarks by their SUBJECT MATTER — what the page is about — not by superficial words in the title or URL.\n\n" +
+
+    "CRITICAL RULES:\n" +
+    "- Almost every bookmark is a website. A folder named 'Web Development' or 'Web Site Dev' is for pages about BUILDING websites (coding, HTML, CSS, hosting, web frameworks). Do NOT put a random company homepage there just because it is a website.\n" +
+    "- Classify by the TOPIC or INDUSTRY the page belongs to. A wallet company website belongs in 'Shopping', 'Fashion', 'Accessories', or 'Lifestyle' — NOT 'Web Development'.\n" +
+    "- A 'Tools' or 'Dev Tools' folder is for developer tools and software utilities, not for a hardware store website.\n" +
+    "- Read the domain name, page title, and any page content carefully to understand what the business/site actually does.\n" +
+    "- If the bookmark is a company/brand homepage, classify it by what the company sells or does (e.g. clothing brand → Fashion/Shopping, restaurant → Food/Dining, bank → Finance).\n" +
+    "- If the bookmark is documentation, a tutorial, or a code repository, classify by the technical subject.\n" +
+    "- If the bookmark is a news article, classify by the article's topic, not by the news outlet.\n\n" +
+
+    "FOLDER MATCHING:\n" +
+    "- Folders are shown as paths with ' > ' separating levels (e.g. 'Tech > JavaScript > Frameworks').\n" +
+    "- Always prefer the MOST SPECIFIC (deepest) subfolder that genuinely fits the topic.\n" +
+    "- Only match a folder if the bookmark's subject truly belongs there. A weak keyword overlap is NOT a match.\n" +
+    "- If no existing folder is a good topical fit, set matchedFolder to null and suggest a short new folder name that describes the subject (e.g. 'Fashion', 'Travel', 'Finance', 'Gaming').\n" +
+    "- Prefer matching an existing folder over suggesting a new one, but only when the match is genuinely relevant.\n"
   );
 }
 
@@ -444,17 +453,18 @@ function buildBookmarkPrompt(bookmark, folderPaths, pageContent) {
   const url = bookmark?.url || "";
   const list = folderPaths.length ? folderPaths.map((p) => `- ${p}`).join("\n") : "- (none)";
 
-  let prompt =
-    `Bookmark: title="${title}", url="${url}"\n` +
-    `Existing folders:\n${list}\n`;
+  let prompt = `Bookmark title: "${title}"\nURL: ${url}\n`;
 
   if (pageContent) {
     prompt += `\nPage content preview:\n${pageContent}\n`;
   }
 
   prompt +=
-    "\nWhich folder path best fits this bookmark? Pick the most specific subfolder. " +
-    "If no folder is suitable, suggest a new folder name. " +
+    "\nFirst, determine what this page is ABOUT — what subject, industry, product, or service does it cover?\n" +
+    `Then pick the best matching folder from this list:\n${list}\n\n` +
+    "Only match a folder if the bookmark's SUBJECT genuinely fits that folder's topic. " +
+    "Do NOT match based on superficial word overlap (e.g. a company website does not belong in a 'Web Development' folder). " +
+    "If no folder is a good topical fit, suggest a new folder name. " +
     "Return the EXACT folder path string from the list for matchedFolder.";
 
   return prompt;
