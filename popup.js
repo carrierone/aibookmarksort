@@ -238,6 +238,26 @@ function getSelectedFolderIds() {
   return Array.from(checked).map((cb) => cb.value);
 }
 
+function filterFolderList(query) {
+  const term = (query || "").trim().toLowerCase();
+  const rows = nodes.folderPickerList.querySelectorAll(".folder-row");
+
+  if (!term) {
+    for (const row of rows) {
+      row.classList.remove("folder-row-hidden");
+    }
+    return;
+  }
+
+  for (const row of rows) {
+    const cb = row.querySelector(".folder-checkbox");
+    const path = (cb?.dataset.folderPath || "").toLowerCase();
+    const name = (row.querySelector(".folder-row-name")?.textContent || "").toLowerCase();
+    const match = path.includes(term) || name.includes(term);
+    row.classList.toggle("folder-row-hidden", !match);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Progress
 // ---------------------------------------------------------------------------
@@ -505,12 +525,13 @@ async function loadInitialData(skipResume) {
 
     appState.bookmarks = Array.isArray(data.bookmarks) ? data.bookmarks : [];
     appState.folders = Array.isArray(data.folders) ? data.folders : [];
+    const scanFolder = data.scanFolderName || "Bookmarks";
 
     if (!appState.bookmarks.length) {
-      nodes.bookmarkCount.textContent = "No unsorted bookmarks found. You're already tidy!";
+      nodes.bookmarkCount.textContent = "No unsorted bookmarks in " + scanFolder + ". You're already tidy!";
       nodes.btnScan.disabled = true;
     } else {
-      nodes.bookmarkCount.textContent = "Found " + appState.bookmarks.length + " unsorted bookmark(s).";
+      nodes.bookmarkCount.textContent = "Found " + appState.bookmarks.length + " unsorted bookmark(s) in " + scanFolder + ".";
       nodes.btnScan.disabled = !canScan;
     }
 
@@ -617,6 +638,7 @@ async function startResortFolders() {
 }
 
 function showFolderPicker() {
+  nodes.folderSearch.value = "";
   renderFolderPicker(appState.folders);
   setView("state-folders");
 }
@@ -665,6 +687,7 @@ function bindEvents() {
   nodes.btnResortSelected.addEventListener("click", startResortFolders);
   nodes.btnFoldersBack.addEventListener("click", loadInitialData);
   nodes.btnStop.addEventListener("click", stopClassification);
+  nodes.folderSearch.addEventListener("input", () => filterFolderList(nodes.folderSearch.value));
 
   nodes.btnApplyAll.addEventListener("click", async () => {
     for (const cb of nodes.resultsList.querySelectorAll(".card-checkbox")) {
@@ -734,6 +757,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   nodes.errorMessage = q("error-message");
   nodes.folderPickerList = q("folder-picker-list");
   nodes.folderPickerCount = q("folder-picker-count");
+  nodes.folderSearch = q("folder-search");
 
   // Model status panel.
   nodes.modelStatusBadge = q("model-status-badge");

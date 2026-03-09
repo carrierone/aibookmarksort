@@ -486,6 +486,31 @@ button:active {
 
 /* ---- Folder picker ---- */
 
+.folder-search {
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+  transition: border-color 150ms ease;
+}
+
+.folder-search:focus {
+  border-color: var(--primary);
+}
+
+.folder-search::placeholder {
+  color: var(--muted);
+}
+
+.folder-row-hidden {
+  display: none !important;
+}
+
 #folder-picker-list {
   max-height: 340px;
   overflow-y: auto;

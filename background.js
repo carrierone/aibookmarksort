@@ -84,26 +84,35 @@ function collectFoldersWithPaths(node, parentPath, result) {
 }
 
 /**
- * Extract bookmarks that are direct children of the root containers
- * (Bookmarks Bar / Other Bookmarks) — i.e. not inside any subfolder.
+ * Find a folder node by ID anywhere in the bookmark tree.
  */
-function extractUnsortedBookmarks(treeRoot) {
-  const unsorted = [];
-  const children = Array.isArray(treeRoot?.children) ? treeRoot.children : [];
-  const targetRoots = children.filter(
-    (n) => n.id === ROOT_BOOKMARKS_BAR_ID || n.id === ROOT_OTHER_BOOKMARKS_ID
-  );
+function findNodeById(node, targetId) {
+  if (!node) return null;
+  if (node.id === targetId) return node;
+  for (const child of node.children || []) {
+    const found = findNodeById(child, targetId);
+    if (found) return found;
+  }
+  return null;
+}
 
-  for (const rootNode of targetRoots) {
-    for (const item of rootNode.children || []) {
-      if (item.url) {
-        unsorted.push({
-          id: item.id,
-          title: item.title || "Untitled Bookmark",
-          url: item.url,
-          parentId: item.parentId || rootNode.id
-        });
-      }
+/**
+ * Extract bookmarks that are direct children of a specific folder
+ * (i.e. not inside any subfolder of that folder).
+ */
+function extractUnsortedBookmarksFromFolder(treeRoot, folderId) {
+  const folderNode = findNodeById(treeRoot, folderId);
+  if (!folderNode || !Array.isArray(folderNode.children)) return [];
+
+  const unsorted = [];
+  for (const item of folderNode.children) {
+    if (item.url) {
+      unsorted.push({
+        id: item.id,
+        title: item.title || "Untitled Bookmark",
+        url: item.url,
+        parentId: item.parentId || folderId
+      });
     }
   }
   return unsorted;
@@ -141,6 +150,55 @@ function extractBookmarksInFolders(treeRoot, folderIds) {
 }
 
 // ---------------------------------------------------------------------------
+// Default bookmark folder detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Detect the folder Chrome defaults to when the user adds/edits a bookmark.
+ * Uses getRecent(1) — the parent of the most recently added bookmark is
+ * effectively the same folder Chrome pre-selects in the Add Bookmark dialog.
+ * Returns the folder node, or falls back to Other Bookmarks.
+ */
+async function detectDefaultBookmarkFolder() {
+  try {
+    const recent = await chrome.bookmarks.getRecent(1);
+    if (recent.length && recent[0].parentId) {
+      const parents = await chrome.bookmarks.get(recent[0].parentId);
+      if (parents.length) {
+        return parents[0];
+      }
+    }
+  } catch (error) {
+    console.warn("Failed to detect default bookmark folder:", error);
+  }
+  // Fallback: Other Bookmarks (id "2").
+  try {
+    const fallback = await chrome.bookmarks.get(ROOT_OTHER_BOOKMARKS_ID);
+    if (fallback.length) return fallback[0];
+  } catch (_) { /* ignore */ }
+  return { id: ROOT_OTHER_BOOKMARKS_ID, title: "Other Bookmarks" };
+}
+
+/**
+ * Walk up from a folder to find which root it belongs to.
+ * Returns "Bookmarks Bar", "Other Bookmarks", or the folder's own title.
+ */
+async function getRootName(folderId) {
+  const rootNames = {
+    [ROOT_BOOKMARKS_BAR_ID]: "Bookmarks Bar",
+    [ROOT_OTHER_BOOKMARKS_ID]: "Other Bookmarks"
+  };
+  if (rootNames[folderId]) return rootNames[folderId];
+  try {
+    const nodes = await chrome.bookmarks.get(folderId);
+    if (nodes.length && nodes[0].parentId) {
+      return getRootName(nodes[0].parentId);
+    }
+  } catch (_) { /* ignore */ }
+  return "Bookmarks";
+}
+
+// ---------------------------------------------------------------------------
 // Message handlers: bookmark scanning
 // ---------------------------------------------------------------------------
 
@@ -148,14 +206,25 @@ async function handleGetUnsortedBookmarks() {
   const tree = await getBookmarkTree();
   const root = Array.isArray(tree) ? tree[0] : null;
   if (!root) {
-    return { success: true, bookmarks: [], folders: [] };
+    return { success: true, bookmarks: [], folders: [], scanFolderName: "" };
   }
 
-  const bookmarks = extractUnsortedBookmarks(root);
+  // Detect the folder Chrome uses as the default for new bookmarks.
+  const defaultFolder = await detectDefaultBookmarkFolder();
+  const scanId = defaultFolder.id;
+
+  // Determine a friendly name for the scanned folder.
+  let scanFolderName = defaultFolder.title || "Bookmarks";
+  if (scanId === ROOT_BOOKMARKS_BAR_ID) scanFolderName = "Bookmarks Bar";
+  if (scanId === ROOT_OTHER_BOOKMARKS_ID) scanFolderName = "Other Bookmarks";
+
+  // Extract bookmarks that are direct children of the detected folder.
+  const bookmarks = extractUnsortedBookmarksFromFolder(root, scanId);
+
   const folders = [];
   collectFoldersWithPaths(root, "", folders);
 
-  return { success: true, bookmarks, folders };
+  return { success: true, bookmarks, folders, scanFolderName };
 }
 
 async function handleGetBookmarksInFolders(payload) {
