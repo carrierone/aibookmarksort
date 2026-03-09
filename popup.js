@@ -18,7 +18,9 @@ const appState = {
   folders: [],
   results: [],
   // "unsorted" = sort root-level bookmarks, "folders" = re-sort selected folders
-  mode: "unsorted"
+  mode: "unsorted",
+  classifying: false,
+  pendingClassifyRequest: false
 };
 
 const nodes = {};
@@ -279,6 +281,12 @@ function resetProgress() {
   nodes.progressText.textContent = "";
 }
 
+function resetStopButton() {
+  nodes.btnStop.disabled = false;
+  nodes.btnStop.textContent = "Stop Sorting";
+  nodes.btnStop.classList.add("hidden");
+}
+
 // ---------------------------------------------------------------------------
 // Apply changes
 // ---------------------------------------------------------------------------
@@ -328,7 +336,8 @@ async function applySelectedChanges() {
         const folderName = (input?.value || "").trim();
         if (!folderName) throw new Error("Folder name cannot be empty.");
 
-        const cacheKey = folderName.toLowerCase();
+        const parentId = card.dataset.originParentId || "1";
+        const cacheKey = parentId + "::" + folderName.toLowerCase();
         if (createdFoldersByName.has(cacheKey)) {
           const resp = await sendMessage({
             type: "moveBookmark",
@@ -341,7 +350,7 @@ async function applySelectedChanges() {
             type: "createFolderAndMove",
             bookmarkId,
             folderName,
-            parentId: card.dataset.originParentId || "1"
+            parentId
           });
           if (!resp?.success) throw new Error(resp?.error || "Create failed");
           createdFoldersByName.set(cacheKey, resp.folderId);
@@ -465,11 +474,13 @@ async function loadInitialData(skipResume) {
   appState.folders = [];
   appState.results = [];
   appState.mode = "unsorted";
+  appState.classifying = false;
+  appState.pendingClassifyRequest = false;
 
   setView("state-initial");
   nodes.btnScan.disabled = true;
   nodes.btnShowFolders.disabled = true;
-  nodes.btnStop.classList.add("hidden");
+  resetStopButton();
   resetProgress();
   setModelStatus("unknown");
 
@@ -478,6 +489,7 @@ async function loadInitialData(skipResume) {
       // 1. Check if classification is actively running in the background.
       const status = await sendMessage({ type: "getClassificationStatus" });
       if (status?.success && status.active) {
+        appState.classifying = true;
         // Background is still sorting — show loading screen and let the
         // message listener handle incoming progress/completion events.
         showLoadingWithStop(
@@ -547,6 +559,7 @@ async function loadInitialData(skipResume) {
 async function startScanUnsorted() {
   if (!appState.bookmarks.length) return;
   appState.mode = "unsorted";
+  appState.classifying = true;
   nodes.btnScan.disabled = true;
 
   showLoadingWithStop(
@@ -559,6 +572,7 @@ async function startScanUnsorted() {
     // Clear any previously saved state before starting a new scan.
     await sendMessage({ type: "clearSavedState" });
 
+    appState.pendingClassifyRequest = true;
     const resp = await sendMessage({
       type: "classifyBookmarks",
       bookmarks: appState.bookmarks,
@@ -567,13 +581,19 @@ async function startScanUnsorted() {
     });
     if (!resp?.success) throw new Error(resp?.error || "Classification failed.");
 
+    appState.classifying = false;
     appState.results = Array.isArray(resp.results) ? resp.results : [];
     renderResults(appState.results);
     setView("state-results");
   } catch (error) {
+    appState.classifying = false;
     console.error("Scan failed:", error);
     nodes.errorMessage.textContent = error.message;
     setView("state-error");
+  } finally {
+    appState.classifying = false;
+    appState.pendingClassifyRequest = false;
+    resetStopButton();
   }
 }
 
@@ -587,6 +607,7 @@ async function startResortFolders() {
   nodes.folderPickerCount.classList.remove("status-warn");
   nodes.folderPickerCount.textContent = selectedIds.length + " folder(s) selected";
   appState.mode = "folders";
+  appState.classifying = true;
 
   setView("state-loading");
   nodes.loadingMessage.textContent = "Loading bookmarks from selected folders...";
@@ -619,6 +640,7 @@ async function startResortFolders() {
     // Clear any previously saved state before starting a new scan.
     await sendMessage({ type: "clearSavedState" });
 
+    appState.pendingClassifyRequest = true;
     const resp = await sendMessage({
       type: "classifyBookmarks",
       bookmarks,
@@ -627,19 +649,26 @@ async function startResortFolders() {
     });
     if (!resp?.success) throw new Error(resp?.error || "Classification failed.");
 
+    appState.classifying = false;
     appState.results = Array.isArray(resp.results) ? resp.results : [];
     renderResults(appState.results);
     setView("state-results");
   } catch (error) {
+    appState.classifying = false;
     console.error("Re-sort failed:", error);
     nodes.errorMessage.textContent = error.message;
     setView("state-error");
+  } finally {
+    appState.classifying = false;
+    appState.pendingClassifyRequest = false;
+    resetStopButton();
   }
 }
 
 function showFolderPicker() {
   nodes.folderSearch.value = "";
   renderFolderPicker(appState.folders);
+  filterFolderList("");
   setView("state-folders");
 }
 
@@ -656,9 +685,13 @@ async function stopClassification() {
 }
 
 async function showPartialResults() {
+  appState.classifying = false;
+  appState.pendingClassifyRequest = false;
+  resetStopButton();
+
   // Load whatever results have been saved so far.
   const saved = await sendMessage({ type: "getSavedState" });
-  if (saved?.success && saved.hasState && saved.results.length) {
+  if (saved?.success && saved.hasState) {
     appState.results = saved.results;
     appState.bookmarks = saved.bookmarks;
     appState.folders = saved.folders;
@@ -711,11 +744,20 @@ function bindEvents() {
     if (!message?.type) return;
 
     if (message.type === "classifyProgress") {
+      appState.classifying = true;
+      nodes.loadingMessage.textContent = "Classifying bookmarks with Gemini Nano...";
       updateProgress(message.current ?? 0, message.total ?? appState.bookmarks.length);
       return;
     }
 
     if (message.type === "classifyComplete") {
+      appState.classifying = false;
+      resetStopButton();
+
+      if (appState.pendingClassifyRequest) {
+        return;
+      }
+
       // Classification finished (or was stopped) while popup is open.
       // If the popup initiated the scan via startScanUnsorted/startResortFolders,
       // the sendMessage response handler will show results. But if the popup
@@ -731,7 +773,10 @@ function bindEvents() {
       // Update model status panel (visible on initial screen).
       updateModelDownloadProgress(val);
 
-      // Also update loading screen progress bar (visible during scan).
+      // Don't overwrite the loading screen once classification has started.
+      if (appState.classifying || appState.pendingClassifyRequest) return;
+
+      // Update loading screen progress bar (visible during model download).
       nodes.loadingMessage.textContent = "Downloading AI model...";
       nodes.progressBarContainer.classList.remove("hidden");
       const pct = Math.max(0, Math.min(100, Math.round(val * 100)));

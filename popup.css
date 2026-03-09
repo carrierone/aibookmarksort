@@ -22,15 +22,16 @@ body {
   margin: 0;
   padding: 0;
   width: 420px;
-  max-height: 580px;
+  max-height: 600px;
   background: linear-gradient(160deg, #ffffff 0%, #f9fbff 100%);
   color: var(--text);
   font-family: "Segoe UI", "Noto Sans", sans-serif;
+  overflow: hidden;
 }
 
 #app {
   padding: 16px;
-  max-height: 580px;
+  max-height: 600px;
   overflow-y: auto;
 }
 
@@ -319,7 +320,7 @@ button:active {
 }
 
 #results-list {
-  max-height: 340px;
+  max-height: 520px;
   overflow-y: auto;
   padding-right: 4px;
   margin-right: -4px;

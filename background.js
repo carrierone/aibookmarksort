@@ -219,7 +219,18 @@ async function handleGetUnsortedBookmarks() {
   if (scanId === ROOT_OTHER_BOOKMARKS_ID) scanFolderName = "Other Bookmarks";
 
   // Extract bookmarks that are direct children of the detected folder.
-  const bookmarks = extractUnsortedBookmarksFromFolder(root, scanId);
+  // If the detected folder isn't in the tree for any reason, fall back safely.
+  let effectiveScanId = scanId;
+  if (!findNodeById(root, effectiveScanId)) {
+    if (findNodeById(root, ROOT_OTHER_BOOKMARKS_ID)) {
+      effectiveScanId = ROOT_OTHER_BOOKMARKS_ID;
+      scanFolderName = "Other Bookmarks";
+    } else if (findNodeById(root, ROOT_BOOKMARKS_BAR_ID)) {
+      effectiveScanId = ROOT_BOOKMARKS_BAR_ID;
+      scanFolderName = "Bookmarks Bar";
+    }
+  }
+  const bookmarks = extractUnsortedBookmarksFromFolder(root, effectiveScanId);
 
   const folders = [];
   collectFoldersWithPaths(root, "", folders);
@@ -714,11 +725,14 @@ async function handleGetSavedState() {
     const data = await chrome.storage.local.get([
       "savedResults", "savedBookmarks", "savedFolders", "savedMode", "savedInProgress", "savedAt"
     ]);
-    if (Array.isArray(data.savedResults) && data.savedResults.length) {
+    const hasSavedResults = Array.isArray(data.savedResults);
+    const hasSavedBookmarks = Array.isArray(data.savedBookmarks) && data.savedBookmarks.length > 0;
+    const hasState = !!data.savedInProgress || hasSavedBookmarks || (hasSavedResults && data.savedResults.length > 0);
+    if (hasState) {
       return {
         success: true,
         hasState: true,
-        results: data.savedResults,
+        results: hasSavedResults ? data.savedResults : [],
         bookmarks: data.savedBookmarks || [],
         folders: data.savedFolders || [],
         mode: data.savedMode || "unsorted",
